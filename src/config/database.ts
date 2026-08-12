@@ -67,38 +67,50 @@ export const autoInitTablesAndAdmin = async (): Promise<void> => {
 export const connectDB = async (): Promise<void> => {
   const primaryUri = env.MONGODB_URI;
   const localFallbackUri = 'mongodb://127.0.0.1:27017/machine_spares';
+  const maxRetries = 3;
 
-  try {
-    const conn = await mongoose.connect(primaryUri, {
-      serverSelectionTimeoutMS: 5000,
-    });
-    console.log(`✅ MongoDB Connected: ${conn.connection.host} / ${conn.connection.name}`);
-    
-    // Automatically create collections & insert default Admin user on startup
-    await autoInitTablesAndAdmin();
-  } catch (error: any) {
-    console.error('❌ MongoDB Connection Error:', error?.message || error);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔌 Connecting to MongoDB (Attempt ${attempt}/${maxRetries})...`);
+      const conn = await mongoose.connect(primaryUri, {
+        serverSelectionTimeoutMS: 8000,
+        connectTimeoutMS: 10000,
+      });
+      console.log(`✅ MongoDB Connected: ${conn.connection.host} / ${conn.connection.name}`);
+      
+      // Automatically create collections & insert default Admin user on startup
+      await autoInitTablesAndAdmin();
+      return;
+    } catch (error: any) {
+      console.error(`❌ MongoDB Connection Error (Attempt ${attempt}/${maxRetries}):`, error?.message || error);
 
-    if (primaryUri.includes('mongodb.net')) {
-      console.warn('⚠️ Atlas Connection Issue Detected!');
-      console.warn('👉 Please check MongoDB Atlas Network Access: add IP address "0.0.0.0/0" to allow access.');
-    }
-
-    // In development mode, automatically fallback to local MongoDB if primary Atlas connection fails
-    if (env.NODE_ENV === 'development' && primaryUri !== localFallbackUri) {
-      console.log(`🔄 Switching fallback to local MongoDB (${localFallbackUri})...`);
-      try {
-        const localConn = await mongoose.connect(localFallbackUri, {
-          serverSelectionTimeoutMS: 5000,
-        });
-        console.log(`✅ MongoDB Connected (Local Fallback): ${localConn.connection.host} / ${localConn.connection.name}`);
-        await autoInitTablesAndAdmin();
-        return;
-      } catch (localErr: any) {
-        console.error('❌ Local MongoDB fallback also failed:', localErr?.message || localErr);
+      if (attempt < maxRetries && primaryUri.includes('mongodb.net')) {
+        console.log(`⏳ Retrying connection in 3 seconds...`);
+        await new Promise((res) => setTimeout(res, 3000));
+        continue;
       }
-    }
 
-    process.exit(1);
+      if (primaryUri.includes('mongodb.net')) {
+        console.warn('⚠️ Atlas Connection Issue Detected!');
+        console.warn('👉 Action Required: Open MongoDB Atlas (https://cloud.mongodb.com) -> Security -> Network Access -> Add IP Address "0.0.0.0/0"');
+      }
+
+      // In development mode, automatically fallback to local MongoDB if primary Atlas connection fails
+      if (env.NODE_ENV === 'development' && primaryUri !== localFallbackUri) {
+        console.log(`🔄 Switching fallback to local MongoDB (${localFallbackUri})...`);
+        try {
+          const localConn = await mongoose.connect(localFallbackUri, {
+            serverSelectionTimeoutMS: 5000,
+          });
+          console.log(`✅ MongoDB Connected (Local Fallback): ${localConn.connection.host} / ${localConn.connection.name}`);
+          await autoInitTablesAndAdmin();
+          return;
+        } catch (localErr: any) {
+          console.error('❌ Local MongoDB fallback also failed:', localErr?.message || localErr);
+        }
+      }
+
+      process.exit(1);
+    }
   }
 };
