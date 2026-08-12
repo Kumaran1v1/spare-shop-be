@@ -7,9 +7,9 @@ const startServer = async () => {
 
   const PORT = parseInt(env.PORT, 10) || 5000;
 
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`
-🚀 Backend API Server running on port ${PORT} [${env.NODE_ENV}]
+🚀 Backend API Server running on 0.0.0.0:${PORT} [${env.NODE_ENV}]
 👉 Health Check: http://localhost:${PORT}/api/health
     `);
   });
